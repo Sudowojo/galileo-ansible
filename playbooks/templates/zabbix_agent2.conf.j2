@@ -1,0 +1,22 @@
+# Zabbix Agent 2 configuration
+# Managed by Ansible - do not edit manually
+
+PidFile=/run/zabbix/zabbix_agent2.pid
+LogFile=/var/log/zabbix/zabbix_agent2.log
+LogFileSize=0
+
+# Server connection
+Server={{ zabbix_server }}
+ServerActive={{ zabbix_server_active | default(zabbix_server) }}
+
+# Host identity
+Hostname={{ zabbix_hostname }}
+HostMetadata={{ zabbix_host_metadata }}
+HostMetadataItem=system.uname
+HostInterface={{ zabbix_host_interface }}
+HostInterfaceItem=system.ip_addresses
+
+ListenPort={{ zabbix_listen_port }}
+Timeout={{ zabbix_agent_timeout }}
+
+Include=/etc/zabbix/zabbix_agent2.d/*.conf

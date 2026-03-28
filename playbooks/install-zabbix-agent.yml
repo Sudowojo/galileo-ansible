@@ -1,7 +1,7 @@
 ---
-# install-zabbix-agent.yml
-# Installs and configures Zabbix Agent 2 on RHEL/CentOS/Ubuntu/Debian targets
-# For demo purposes - review before production use
+# playbooks/install-zabbix-agent.yml
+# Installs and configures Zabbix Agent 2 on RHEL/Ubuntu/Debian targets
+# Server and ServerActive are passed as extra variables / AAP Survey at launch time
 
 - name: Install and Configure Zabbix Agent 2
   hosts: all
@@ -9,13 +9,24 @@
 
   vars:
     zabbix_version: "7.0"
-    zabbix_server: "192.168.1.100"       # Replace with your Zabbix/Galileo server IP or FQDN
-    zabbix_server_active: "192.168.1.100" # Replace with your Zabbix/Galileo server IP or FQDN
-    zabbix_hostname: "{{ inventory_hostname }}"
     zabbix_listen_port: 10050
     zabbix_agent_timeout: 3
+    zabbix_hostname: "{{ ansible_fqdn }}"
+    zabbix_host_metadata: "{{ 'linux-rhel' if ansible_os_family == 'RedHat' else 'linux-ubuntu' }}"
+    zabbix_host_interface: "{{ ansible_default_ipv4.address }}"
+    zabbix_server: "192.168.250.20"
+    zabbix_server_active: "192.168.250.20"
 
   tasks:
+
+    # -------------------------------------------------------
+    # Validate required variables
+    # -------------------------------------------------------
+
+    - name: Fail if zabbix_server is not defined
+      ansible.builtin.fail:
+        msg: "zabbix_server must be defined. Set it as an extra variable or via AAP Survey."
+      when: zabbix_server is not defined or zabbix_server == ""
 
     # -------------------------------------------------------
     # RHEL / CentOS / Rocky / AlmaLinux
@@ -39,7 +50,7 @@
     # Ubuntu / Debian
     # -------------------------------------------------------
 
-    - name: Install prerequisites for Zabbix repo (Debian family)
+    - name: Install prerequisites (Debian family)
       ansible.builtin.apt:
         name:
           - wget
@@ -48,7 +59,7 @@
         update_cache: true
       when: ansible_os_family == "Debian"
 
-    - name: Download Zabbix repository package (Debian family)
+    - name: Download Zabbix repository package (Ubuntu)
       ansible.builtin.get_url:
         url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu{{ ansible_distribution_version }}_all.deb"
         dest: /tmp/zabbix-release.deb
@@ -85,7 +96,7 @@
 
     - name: Configure Zabbix Agent 2
       ansible.builtin.template:
-        src: zabbix_agent2.conf.j2
+        src: templates/zabbix_agent2.conf.j2
         dest: /etc/zabbix/zabbix_agent2.conf
         owner: root
         group: root
@@ -99,8 +110,14 @@
         state: started
 
     # -------------------------------------------------------
-    # Firewall (firewalld - RHEL family)
+    # Firewall - firewalld (RHEL family)
     # -------------------------------------------------------
+
+    - name: Check if firewalld is running (RHEL family)
+      ansible.builtin.systemd:
+        name: firewalld
+      register: firewalld_status
+      when: ansible_os_family == "RedHat"
 
     - name: Open Zabbix agent port in firewalld (RHEL family)
       ansible.posix.firewalld:
@@ -110,11 +127,10 @@
         immediate: true
       when:
         - ansible_os_family == "RedHat"
-        - ansible_facts.services['firewalld.service'] is defined
-        - ansible_facts.services['firewalld.service'].state == 'running'
+        - firewalld_status.status.ActiveState == "active"
 
     # -------------------------------------------------------
-    # Firewall (ufw - Debian/Ubuntu)
+    # Firewall - ufw (Debian/Ubuntu)
     # -------------------------------------------------------
 
     - name: Open Zabbix agent port in ufw (Debian family)
@@ -123,6 +139,20 @@
         port: "{{ zabbix_listen_port }}"
         proto: tcp
       when: ansible_os_family == "Debian"
+
+    # -------------------------------------------------------
+    # Verify agent is running
+    # -------------------------------------------------------
+
+    - name: Verify Zabbix Agent 2 is running
+      ansible.builtin.systemd:
+        name: zabbix-agent2
+      register: agent_status
+      failed_when: agent_status.status.ActiveState != "active"
+
+    - name: Report agent status
+      ansible.builtin.debug:
+        msg: "Zabbix Agent 2 is {{ agent_status.status.ActiveState }} on {{ ansible_fqdn }} ({{ ansible_default_ipv4.address }}) reporting to {{ zabbix_server }}"
 
   handlers:
     - name: Restart Zabbix Agent 2
