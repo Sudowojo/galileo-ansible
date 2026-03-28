@@ -1,0 +1,39 @@
+---
+# extensions/eda/rulebooks/zabbix-webhook.yml
+# Listens for incoming Zabbix webhook alerts and triggers remediation playbooks
+# via Ansible Automation Platform Controller
+
+- name: Listen for Zabbix Alerts
+  hosts: all
+  sources:
+    - ansible.eda.webhook:
+        host: 0.0.0.0
+        port: 5001
+
+  rules:
+
+    - name: Handle PROBLEM event
+      condition: event.body.trigger_severity is defined and event.body.status == "PROBLEM"
+      action:
+        run_job_template:
+          name: "Zabbix Alert Remediation"
+          organization: "Default"
+          job_args:
+            extra_vars:
+              alert_host: "{{ event.body.host_name }}"
+              alert_name: "{{ event.body.trigger_name }}"
+              alert_severity: "{{ event.body.trigger_severity }}"
+              alert_status: "{{ event.body.status }}"
+
+    - name: Log RECOVERY event
+      condition: event.body.status == "RESOLVED"
+      action:
+        post_event:
+          event:
+            msg: "Recovery received for {{ event.body.host_name }} - {{ event.body.trigger_name }}"
+
+    - name: Log all other events
+      condition: event.body is defined
+      action:
+        debug:
+          msg: "Received event from Zabbix: {{ event.body }}"
