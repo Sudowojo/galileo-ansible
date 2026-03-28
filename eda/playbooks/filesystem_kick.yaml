@@ -1,0 +1,48 @@
+---
+- name: Increase Filesystem Size
+  hosts: "{{ run }}"
+  become: yes
+  vars:
+    kick_percentage: 0.20
+
+  tasks:
+    - name: Determine Operating System
+      ansible.builtin.set_fact:
+        os_type: "{{ ansible_facts['distribution'] | default(ansible_facts['os_family']) }}"
+
+    - name: Calculate the current size of {{ key }}
+      shell: df -m {{ key }} | tail -1 | awk '{ print $2 }'
+      register: current_space_in_mb
+      failed_when: current_space_in_mb.rc != 0
+
+    - name: "Calculate the current percentage of {{ key }}"
+      shell: df -m {{ key }} | awk '{ print $4 }' | tail -1
+      register: current_space_in_perc
+      failed_when: current_space_in_perc.rc != 0
+
+    - name: "Calculate {{ kick_percentage }}% of {{ key }}"
+      set_fact:
+        new_fs_size_in_mb: "{{ ((current_space_in_mb.stdout | int * kick_percentage | float) | round(0, 'ceil') | int + current_space_in_mb.stdout | int) }}"
+
+    ##########################################################################
+    # TODO: Check the volume group to see if it can even perform the action. #
+    ##########################################################################
+
+    - name: "Resizing {{ key }} to {{ new_fs_size_in_mb }}."
+      shell: "chfs -a size={{ new_fs_size_in_mb }}M {{ key }}"
+      register: chfs
+      failed_when: chfs.rc != 0
+
+    - name: "Calculate the new percentage of {{ key }}"
+      shell: df -m /opt | awk '{ print $4 }' | tail -1
+      register: new_space_in_perc
+      failed_when: new_space_in_perc.rc != 0
+
+    - name: Send message to Teams
+      uri:
+        url: "{{ teams_url }}"
+        method: POST
+        body_format: json
+        body: 
+          title: "SELF HEALING (Filesystem Kick)"
+          text: "{{ run }}: {{ key }} before: {{ current_space_in_mb.stdout }}MB ({{ current_space_in_perc.stdout }} used), after: {{ new_fs_size_in_mb }}MB ({{ new_space_in_perc.stdout }} used)"

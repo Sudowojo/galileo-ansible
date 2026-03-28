@@ -1,0 +1,18 @@
+---
+- name: Restart Nginx service
+  hosts: "{{ run }}"
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Restart Nginx service
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+    - name: Send message to Teams
+      uri:
+        url: "{{ teams_url }}"
+        method: POST
+        body_format: json
+        body: 
+          title: "SELF HEALING (Nginx)"
+          text: "{{ run }}: Nginx not running, started."

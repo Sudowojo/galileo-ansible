@@ -1,0 +1,131 @@
+---
+# install-zabbix-agent.yml
+# Installs and configures Zabbix Agent 2 on RHEL/CentOS/Ubuntu/Debian targets
+# For demo purposes - review before production use
+
+- name: Install and Configure Zabbix Agent 2
+  hosts: all
+  become: true
+
+  vars:
+    zabbix_version: "7.0"
+    zabbix_server: "192.168.1.100"       # Replace with your Zabbix/Galileo server IP or FQDN
+    zabbix_server_active: "192.168.1.100" # Replace with your Zabbix/Galileo server IP or FQDN
+    zabbix_hostname: "{{ inventory_hostname }}"
+    zabbix_listen_port: 10050
+    zabbix_agent_timeout: 3
+
+  tasks:
+
+    # -------------------------------------------------------
+    # RHEL / CentOS / Rocky / AlmaLinux
+    # -------------------------------------------------------
+
+    - name: Install Zabbix RPM repository (RHEL family)
+      ansible.builtin.dnf:
+        name: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/rhel/{{ ansible_distribution_major_version }}/x86_64/zabbix-release-latest-{{ zabbix_version }}.el{{ ansible_distribution_major_version }}.noarch.rpm"
+        state: present
+        disable_gpg_check: true
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Zabbix Agent 2 (RHEL family)
+      ansible.builtin.dnf:
+        name: zabbix-agent2
+        state: present
+        update_cache: true
+      when: ansible_os_family == "RedHat"
+
+    # -------------------------------------------------------
+    # Ubuntu / Debian
+    # -------------------------------------------------------
+
+    - name: Install prerequisites for Zabbix repo (Debian family)
+      ansible.builtin.apt:
+        name:
+          - wget
+          - gnupg
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    - name: Download Zabbix repository package (Debian family)
+      ansible.builtin.get_url:
+        url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu{{ ansible_distribution_version }}_all.deb"
+        dest: /tmp/zabbix-release.deb
+        mode: '0644'
+      when:
+        - ansible_os_family == "Debian"
+        - ansible_distribution == "Ubuntu"
+
+    - name: Download Zabbix repository package (Debian)
+      ansible.builtin.get_url:
+        url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/debian/pool/main/z/zabbix-release/zabbix-release_latest+debian{{ ansible_distribution_major_version }}_all.deb"
+        dest: /tmp/zabbix-release.deb
+        mode: '0644'
+      when:
+        - ansible_os_family == "Debian"
+        - ansible_distribution == "Debian"
+
+    - name: Install Zabbix repository package (Debian family)
+      ansible.builtin.apt:
+        deb: /tmp/zabbix-release.deb
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Zabbix Agent 2 (Debian family)
+      ansible.builtin.apt:
+        name: zabbix-agent2
+        state: present
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    # -------------------------------------------------------
+    # Configure Zabbix Agent 2 (all platforms)
+    # -------------------------------------------------------
+
+    - name: Configure Zabbix Agent 2
+      ansible.builtin.template:
+        src: zabbix_agent2.conf.j2
+        dest: /etc/zabbix/zabbix_agent2.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart Zabbix Agent 2
+
+    - name: Enable and start Zabbix Agent 2
+      ansible.builtin.systemd:
+        name: zabbix-agent2
+        enabled: true
+        state: started
+
+    # -------------------------------------------------------
+    # Firewall (firewalld - RHEL family)
+    # -------------------------------------------------------
+
+    - name: Open Zabbix agent port in firewalld (RHEL family)
+      ansible.posix.firewalld:
+        port: "{{ zabbix_listen_port }}/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+      when:
+        - ansible_os_family == "RedHat"
+        - ansible_facts.services['firewalld.service'] is defined
+        - ansible_facts.services['firewalld.service'].state == 'running'
+
+    # -------------------------------------------------------
+    # Firewall (ufw - Debian/Ubuntu)
+    # -------------------------------------------------------
+
+    - name: Open Zabbix agent port in ufw (Debian family)
+      community.general.ufw:
+        rule: allow
+        port: "{{ zabbix_listen_port }}"
+        proto: tcp
+      when: ansible_os_family == "Debian"
+
+  handlers:
+    - name: Restart Zabbix Agent 2
+      ansible.builtin.systemd:
+        name: zabbix-agent2
+        state: restarted

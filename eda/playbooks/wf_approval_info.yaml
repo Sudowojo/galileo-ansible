@@ -1,0 +1,51 @@
+---
+- name: NOC Review
+  hosts: "{{ run }}"
+  become: yes
+  vars:
+    context: none
+
+  tasks:
+    - name: Get list of currently logged in users
+      command: who
+      register: logged_in_users
+
+    - name: Print list of currently logged in users
+      debug:
+        msg: "{{ logged_in_users.stdout_lines }}"
+
+    - name: Run lspath
+      command: lspath
+      register: lspath_output
+      when: context == "fiber"
+
+    - name: Print lspath
+      debug:
+        msg: "{{ lspath_output.stdout_lines }}"
+
+    - name: Send message to Teams
+      uri:
+        url: "{{ teams_url }}"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          type: "message"
+          attachments:
+            - contentType: "application/vnd.microsoft.card.adaptive"
+              content:
+                type: "AdaptiveCard"
+                version: "1.4"
+                body:
+                  - type: "TextBlock"
+                    text: "APPROVAL NEEDED (Fiber Adapter Tuning)"
+                    weight: "Bolder"
+                    size: "Medium"
+                  - type: "TextBlock"
+                    text: "{{ run }}: Fiber Adapter Tunables. Login to review the impact and approve this automation."
+                actions:
+                  - type: "Action.OpenUrl"
+                    title: "Approve"
+                    url: "https://aap.ats.local/#/workflow_approvals"
+        status_code: [200, 202]

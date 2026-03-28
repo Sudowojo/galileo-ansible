@@ -1,0 +1,47 @@
+---
+- name: Configure network option for AIX
+  hosts: " {{ run }}"
+  become: yes
+  gather_facts: no
+  vars:
+    tcp_recvspace: 262144
+    tcp_sendspace: 262144
+    use_isno: 0
+    sb_max: 1048576
+    key: "tcp_recvspace"  # Default key, change it to any default you want
+  tasks:
+    - name: Check if the tunable exists
+      fail:
+        msg: "'{{ key }}' is not defined"
+      when: vars[key] is not defined
+
+    - name: Set Network Option ({{ key }})
+      ansible.builtin.raw: no -p -o {{ key }}={{ vars[key] }}
+      when: vars[key] is defined
+
+    - name: Send message to Teams
+      uri:
+        url: "{{ teams_url }}"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          type: "message"
+          attachments:
+            - contentType: "application/vnd.microsoft.card.adaptive"
+              content:
+                type: "AdaptiveCard"
+                version: "1.4"
+                body:
+                  - type: "TextBlock"
+                    text: "SELF HEALING (Network Tunables)"
+                    weight: "Bolder"
+                    size: "Medium"
+                  - type: "TextBlock"
+                    text: "{{ run }}: no -p -o {{ key }}={{ vars[key] }}"
+                actions:
+                  - type: "Action.OpenUrl"
+                    title: "View More"
+                    url: "https://demov3.gam.galileosuite.com/"
+        status_code: [200, 202]

@@ -1,0 +1,17 @@
+---
+- name: Restart IIS Service
+  hosts: "{{ run }}"
+  tasks:
+    - name: Restart IIS
+      win_service:
+        name: W3SVC
+        state: restarted
+    - name: Send message to Teams
+      delegate_to: localhost
+      uri:
+        url: "{{ teams_url }}"
+        method: POST
+        body_format: json
+        body: 
+          title: "SELF HEALING (Windows IIS)"
+          text: "Restarted IIS on {{ run }}"

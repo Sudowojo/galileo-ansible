@@ -1,0 +1,69 @@
+---
+- name: Zabbix Conditional Automation
+  hosts: all
+  sources:
+    - ansible.eda.webhook:
+        host: 0.0.0.0
+        port: 6001
+  rules:
+    - name: Fiber Adapters
+      condition: event.payload.event_tags.playbook is select("==", "Tune Fiber Adapters")
+      action:
+        run_workflow_template: 
+          name: NOC Review
+          organization: Default
+          job_args:
+            extra_vars:
+              key: "{{ event.payload.event_tags.key[0] }}"
+              run: "{{ event.payload.host_host }}"
+              context: "fiber"
+              device: "{{ event.payload.event_tags.device[0] }}"
+    - name: Nginx
+      condition: event.payload.event_tags.playbook is select("==", "Restart Nginx")
+      action:
+        run_job_template: 
+          name: Start Nginx
+          organization: Default
+          job_args:
+            extra_vars:
+              run: "{{ event.payload.host_host }}"
+    - name: Filesystem
+      condition: event.payload.event_tags.playbook is select("==", "Full Filesystem")
+      action:
+        run_job_template: 
+          name: Increase Filesystem
+          organization: Default
+          job_args:
+            extra_vars:
+              kick_percentage: "{{ event.payload.event_tags.kick_percentage[0] }}"
+              run: "{{ event.payload.host_host }}"
+              key: "{{ event.payload.event_tags.key[0] }}"
+    - name: Page Space
+      condition: event.payload.event_tags.playbook is select("==", "Page Space Kick")
+      action:
+        run_job_template: 
+          name: Page Space Kick
+          organization: Default
+          job_args:
+            extra_vars:
+              kick_percentage: "{{ event.payload.event_tags.kick_percentage[0] }}"
+              run: "{{ event.payload.host_host }}"
+    - name: Network Options
+      condition: event.payload.event_tags.playbook is select("==", "Network Options")
+      action:
+        run_job_template: 
+          name: Network Options 
+          organization: Default
+          job_args:
+            extra_vars:
+              key: "{{ event.payload.event_tags.key[0] }}"
+              run: "{{ event.payload.host_host }}"
+    - name: Windows - Restart IIS
+      condition: event.payload.event_tags.playbook is select("==", "Windows - Restart IIS")
+      action:
+        run_job_template: 
+          name: Windows - Restart IIS
+          organization: Default
+          job_args:
+            extra_vars:
+              run: "{{ event.payload.host_host }}"

@@ -1,0 +1,80 @@
+---
+- name: Manage Page Space on AIX Server
+  hosts: "{{ run }}"
+  gather_facts: no
+  become: yes
+  vars:
+    kick_percentage: 0.20
+
+  tasks:
+    - name: Get current active page space name
+      shell: lsps -a | grep -v Total | awk '{print $1}' | tail -1
+      register: page_space_name
+      failed_when: page_space_name.stdout == ""
+
+    - name: Calculate the current size of the active page space (in MB)
+      shell: lsps -s | tail -n 1 | awk '{print $1}' | sed 's/MB//g'
+      register: current_page_space_in_mb
+      failed_when: current_page_space_in_mb.rc != 0
+
+    - name: Calculate the current size of the active page space (in %)
+      shell: lsps -s | tail -n 1 | awk '{print $2}'
+      register: current_page_space_in_percent
+      failed_when: current_page_space_in_percent.rc != 0
+
+    - name: Calculate the current PP size
+      shell: lsvg rootvg | grep "PP SIZE:" | awk '{ print $(NF -1) }'
+      register: pp_size
+      failed_when: pp_size.rc != 0
+
+    - name: Convert current page space size to number of logical partitions
+      set_fact:
+        current_lp_size: "{{ (current_page_space_in_mb.stdout | int) / (pp_size.stdout | int) }}"
+      failed_when: current_lp_size is not defined
+
+    - name: Calculate % of number of allocated logical partitions.
+      set_fact:
+        new_lp_size: "{{ ((current_lp_size | int * kick_percentage | float) | round(0, 'ceil') | int + current_lp_size | int) }}"
+        
+    - name: Calculate the pp's needed from rootvg
+      set_fact:
+        pps_needed: "{{ (new_lp_size | int) - (current_lp_size | int) }}"
+
+    - name: Calculate the free PP's
+      shell:  lsvg rootvg | grep "FREE PPs" | awk '{ print $(NF-2) }' 
+      register: pps_free
+      failed_when: pps_free.rc != 0
+
+    - name: Set pps_free fact
+      set_fact:
+        pps_free: "{{ pps_free.stdout | int }}"
+
+    - name: Check if free PPs are more than PPs needed
+      assert:
+        that: pps_free | int >= pps_needed | int
+        fail_msg: "Not enough free PPs. Required: {{ pps_needed }}, Available: {{ pps_free }}"
+        success_msg: "Sufficient free PPs available."
+
+    - name: Change the page space
+      shell: chps -s {{ pps_needed }} "{{ page_space_name.stdout }}"
+      register: chps_output
+      failed_when: chps_output.rc != 0
+
+    - name: Calculate the new size of the active page space (in MB)
+      shell: lsps -s | tail -n 1 | awk '{print $1}' | sed 's/MB//g'
+      register: new_page_space_in_mb
+      failed_when: new_page_space_in_mb.rc != 0
+
+    - name: Calculate the current size of the active page space (in %)
+      shell: lsps -s | tail -n 1 | awk '{print $2}'
+      register: new_page_space_in_percent
+      failed_when: new_page_space_in_percent.rc != 0
+
+    - name: Send message to Teams
+      uri:
+        url: "{{ teams_url }}"
+        method: POST
+        body_format: json
+        body: 
+          title: "SELF HEALING (Page Space)"
+          text: "{{ run }}: Page Space Before: {{ current_page_space_in_mb.stdout }}MB ({{ current_page_space_in_percent.stdout }}), Page Space After: {{ new_page_space_in_mb.stdout }}MB ({{ new_page_space_in_percent.stdout }})"
