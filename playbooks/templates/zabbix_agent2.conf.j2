@@ -12,9 +12,7 @@ ServerActive={{ zabbix_server_active | default(zabbix_server) }}
 # Host identity
 Hostname={{ zabbix_hostname }}
 HostMetadata={{ zabbix_host_metadata }}
-HostMetadataItem=system.uname
 HostInterface={{ zabbix_host_interface }}
-HostInterfaceItem=system.ip_addresses
 
 ListenPort={{ zabbix_listen_port }}
 Timeout={{ zabbix_agent_timeout }}
