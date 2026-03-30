@@ -1,16 +1,22 @@
 ---
+# extensions/eda/rulebooks/zabbix-webhook.yml
+# Listens for incoming Zabbix webhook alerts and triggers remediation playbooks
+# via Ansible Automation Platform Controller
+
 - name: Listen for Zabbix Alerts
   hosts: all
   sources:
     - ansible.eda.webhook:
         host: 0.0.0.0
         port: 5001
+
   rules:
-    - name: Handle PROBLEM event
-      condition: event.payload.trigger_severity is defined and event.payload.event_value == "1"
+
+    - name: Restart httpd
+      condition: event.payload.playbook is defined and event.payload.playbook == "Restart httpd"
       action:
         run_job_template:
-          name: "Zabbix Alert Remediation"
+          name: "Restart httpd"
           organization: "Default"
           job_args:
             extra_vars:
@@ -19,8 +25,8 @@
               alert_severity: "{{ event.payload.trigger_severity }}"
               alert_event_id: "{{ event.payload.event_id }}"
 
-    - name: Log all other events
+    - name: Log unmatched events
       condition: event.payload is defined
       action:
         debug:
-          msg: "Received event from Zabbix: {{ event.payload }}"
+          msg: "Unmatched event from {{ event.payload.host_name }} - Trigger: {{ event.payload.trigger_name }} - Playbook tag: {{ event.payload.playbook | default('none') }}"

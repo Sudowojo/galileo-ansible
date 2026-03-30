@@ -1,0 +1,43 @@
+---
+# playbooks/restart-httpd.yml
+# Restarts Apache HTTPD service
+# Triggered by EDA when Zabbix detects httpd is down
+
+- name: Restart Apache HTTPD
+  hosts: all
+  become: true
+
+  vars:
+    service_name: httpd
+
+  tasks:
+
+    - name: Log remediation start
+      ansible.builtin.debug:
+        msg: >
+          Starting remediation for {{ service_name }} on {{ inventory_hostname }}
+          triggered by Zabbix alert: {{ alert_name | default('unknown') }}
+
+    - name: Ensure httpd is started
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: started
+        enabled: true
+      register: service_result
+
+    - name: Wait for httpd to be fully up
+      ansible.builtin.wait_for:
+        port: 80
+        host: "{{ ansible_default_ipv4.address }}"
+        delay: 3
+        timeout: 30
+
+    - name: Verify httpd is running
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+      register: service_status
+      failed_when: service_status.status.ActiveState != "active"
+
+    - name: Log remediation result
+      ansible.builtin.debug:
+        msg: "{{ service_name }} is now {{ service_status.status.ActiveState }} on {{ inventory_hostname }}"
