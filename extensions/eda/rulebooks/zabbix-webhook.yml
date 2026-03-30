@@ -6,8 +6,21 @@
         host: 0.0.0.0
         port: 5001
   rules:
-    - name: Dump everything
-      condition: event is defined
+    - name: Handle PROBLEM event
+      condition: event.payload.trigger_severity is defined and event.payload.event_value == "1"
+      action:
+        run_job_template:
+          name: "Zabbix Alert Remediation"
+          organization: "Default"
+          job_args:
+            extra_vars:
+              alert_host: "{{ event.payload.host_name }}"
+              alert_name: "{{ event.payload.trigger_name }}"
+              alert_severity: "{{ event.payload.trigger_severity }}"
+              alert_event_id: "{{ event.payload.event_id }}"
+
+    - name: Log all other events
+      condition: event.payload is defined
       action:
         debug:
-          msg: "Raw event: {{ event }}"
+          msg: "Received event from Zabbix: {{ event.payload }}"
