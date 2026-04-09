@@ -1,0 +1,21 @@
+---
+# playbooks/add_user.yml
+- name: Add user to Linux host
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Create user account
+      ansible.builtin.user:
+        name: "{{ new_username }}"
+        shell: /bin/bash
+        create_home: true
+        groups: "{{ 'wheel' if is_admin | bool else '' }}"
+        append: true
+        state: present
+
+    - name: Set up SSH authorized key
+      ansible.posix.authorized_key:
+        user: "{{ new_username }}"
+        key: "{{ new_ssh_key }}"
+        state: present
