@@ -4,7 +4,7 @@
 # Triggered by EDA when Zabbix detects httpd is down
 
 - name: Restart Apache HTTPD
-  hosts: all
+  hosts: {{ alert_host }}
   become: true
 
   vars:
